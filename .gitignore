@@ -1,0 +1,18 @@
+# ── VSCode 的 IntelliSense 浏览数据库 ──────────────────────────────────────
+# 机器相关、可自动重建，而且单个文件就有近 900MB。
+# 提交进 git 历史后几乎无法移除，务必排除。
+.vscode/browse.vc.db*
+
+# ── 构建产物 ───────────────────────────────────────────────────────────────
+# fastdds_ros_learning 下的生成代码、可执行文件、Python 模块
+build/
+
+# Python 字节码缓存
+__pycache__/
+*.pyc
+
+# ── 第三方依赖的独立克隆 ───────────────────────────────────────────────────
+# src/googletest-distribution 自带 .git，是单独 clone 下来的仓库，
+# 不属于本项目。直接 add 会变成一个没有 .gitmodules 的 gitlink
+# （克隆下来是空目录），所以先忽略掉。
+/src/googletest-distribution/

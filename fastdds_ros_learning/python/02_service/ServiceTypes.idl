@@ -1,0 +1,21 @@
+// 第 2 章的数据类型。
+//
+// ROS 2 的服务在 .srv 文件里写成 "请求 --- 响应" 两段，编译后就是两个类型。
+// 对应到 DDS，就是两条独立的 Topic，各自带一个类型 —— DDS 本身没有 RPC，
+// 服务的"请求-响应"语义要靠应用层用两条 Topic 拼出来。
+//
+// 注意：cpp/ 和 python/ 下各有一份内容相同的 Service.idl。
+// 内容一致才能保证两端生成出的类型在 DDS 线路上二进制兼容，可以互相调用。
+
+struct AddRequest
+{
+    unsigned long long request_id;   // 请求序号，响应靠它跟请求配对
+    long a;                          // 被加数
+    long b;                          // 另一个加数
+};
+
+struct AddResponse
+{
+    unsigned long long request_id;   // 原样回传请求里的 request_id
+    long sum;                        // 计算结果
+};

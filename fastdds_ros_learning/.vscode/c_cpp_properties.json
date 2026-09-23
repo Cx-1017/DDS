@@ -1,0 +1,28 @@
+{
+  "configurations": [
+    {
+      "browse": {
+        "databaseFilename": "${workspaceFolder}/.vscode/browse.vc.db",
+        "limitSymbolsToIncludedHeaders": false
+      },
+      "includePath": [
+        "/opt/ros/humble/include/**",
+        "/opt/ros/humble/include/foonathan_memory/**",
+        "/usr/include/**",
+        "/home/cx/Fast-DDS/install/fastdds/include/**",
+        "/home/cx/Fast-DDS-python/install/fastcdr/include/**",
+        "${workspaceFolder}/build/cpp/01_basic_api/generated/**",
+        "${workspaceFolder}/build/cpp/02_service/generated/**",
+        "${workspaceFolder}/build/cpp/03_topic/generated/**",
+        "${workspaceFolder}/build/cpp/04_parameter/generated/**",
+        "${workspaceFolder}/build/cpp/05_action/generated/**"
+      ],
+      "name": "ros2",
+      "intelliSenseMode": "gcc-x64",
+      "compilerPath": "/usr/bin/gcc",
+      "cStandard": "gnu11",
+      "cppStandard": "c++17"
+    }
+  ],
+  "version": 4
+}

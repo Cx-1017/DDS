@@ -1,0 +1,41 @@
+// 第 5 章的数据类型。
+//
+// ROS 2 的 action 在 .action 文件里写成 "目标 --- 反馈 --- 结果" 三段。
+// 它是一个【有状态的长任务】协议：客户端发目标，服务端边执行边报进度，
+// 最后给结果；执行期间客户端还能请求取消。
+//
+// 对应到 DDS 是四条 Topic：
+//
+//   /demo/fibonacci/goal      客户端 → 服务端   发起一个目标
+//   /demo/fibonacci/feedback  服务端 → 客户端   执行过程中的进度
+//   /demo/fibonacci/result    服务端 → 客户端   最终结果
+//   /demo/fibonacci/cancel    客户端 → 服务端   请求取消某个目标
+//
+// 四条通道靠 goal_id 关联，和服务里的 request_id 是同一个思路。
+// 为什么取消要单独一条 Topic？因为它是"执行途中"发过来的，
+// 和"发目标"是两件不同的事，混在一条 Topic 上反而要加状态字段区分。
+
+struct FibonacciGoal
+{
+    unsigned long long goal_id;   // 目标编号
+    long order;                   // 要生成多少个斐波那契数
+};
+
+struct FibonacciFeedback
+{
+    unsigned long long goal_id;    // 属于哪个目标
+    long sequence_index;           // 第几个数
+    long partial_sequence;         // 算到当前为止的值
+};
+
+struct FibonacciResult
+{
+    unsigned long long goal_id;    // 属于哪个目标
+    long result;                   // 最终值
+    boolean canceled;              // 是被取消的，还是正常跑完的
+};
+
+struct FibonacciCancel
+{
+    unsigned long long goal_id;    // 要取消哪个目标
+};

@@ -1,0 +1,14 @@
+{
+    "ROS2.distro": "humble",
+    "cmake.sourceDirectory": "/home/cx/code/DDS/src/googletest-distribution",
+    "python.autoComplete.extraPaths": [
+        "/home/cx/Fast-DDS-python/install/fastdds_python/lib/python3.10/site-packages",
+        "/opt/ros/humble/lib/python3.10/site-packages",
+        "/opt/ros/humble/local/lib/python3.10/dist-packages"
+    ],
+    "python.analysis.extraPaths": [
+        "/home/cx/Fast-DDS-python/install/fastdds_python/lib/python3.10/site-packages",
+        "/opt/ros/humble/lib/python3.10/site-packages",
+        "/opt/ros/humble/local/lib/python3.10/dist-packages"
+    ]
+}

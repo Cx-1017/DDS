@@ -1,0 +1,16 @@
+// 第 1 章的数据类型定义。
+//
+// fastddsgen 会把这个文件翻译成两样东西：
+//   Basic.hpp            —— 纯 C++ 数据结构 HelloWorld，不依赖 DDS
+//   BasicPubSubTypes.hpp —— DDS 类型适配类 HelloWorldPubSubType，
+//                           告诉中间件怎样把 HelloWorld 序列化成字节流
+//
+// 注意：cpp/ 和 python/ 下各有一份内容完全相同的 Basic.idl。
+// 这样做是为了让两个语言目录都能单独阅读；因为内容一致，
+// 两端生成出的类型在 DDS 线路上是二进制兼容的，可以互相通信。
+
+struct HelloWorld
+{
+    unsigned long index;    // 序号，便于看出收到的是第几条、有没有丢包
+    string message;         // 消息正文
+};

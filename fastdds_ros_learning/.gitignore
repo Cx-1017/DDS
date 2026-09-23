@@ -1,0 +1,6 @@
+# 构建产物：fastddsgen 生成的代码、编译出的可执行文件和 Python 模块都在这里
+/build/
+
+# Python 字节码缓存
+__pycache__/
+*.pyc

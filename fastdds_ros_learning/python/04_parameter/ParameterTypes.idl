@@ -1,0 +1,49 @@
+// 第 4 章的数据类型。
+//
+// ROS 2 的参数系统有三件事：声明（带默认值）、读取、修改。
+// 修改时还会发一条"参数事件"通知别人。这里用三条 Topic 分别承载：
+//
+//   /demo/parameters/request    客户端 → 服务端   声明/读取/修改
+//   /demo/parameters/response   服务端 → 客户端   返回结果
+//   /demo/parameter_events      服务端 → 所有人   参数被改动的通知
+//
+// 用 enum 而不是 0/1/2 这种魔法数字 —— IDL 的 enum 会生成成 C++/Python 里
+// 的具名常量，不用靠注释记哪个数字是什么意思。
+//
+// 【注意两端生成的写法不一样】同一个 ParamOp，生成出来是：
+//   C++：    enum class ParamOp { ... }  →  取值要写 ParamOp::PARAM_GET
+//            （enum class 是有作用域的，裸写 PARAM_GET 编译不过）
+//   Python： 平铺的模块级常量           →  取值写 ParameterTypes.ParamOp_PARAM_GET
+//            （SWIG 会把枚举类型名当前缀拼进去）
+// 这类"同一份 IDL、两端写法不同"的地方，是跨语言调试时最容易卡住的点。
+//
+// 注意：cpp/ 和 python/ 下各有一份内容相同的 ParameterTypes.idl。
+
+enum ParamOp
+{
+    PARAM_DECLARE,   // 声明一个参数，附带默认值
+    PARAM_GET,       // 读取参数当前值
+    PARAM_SET        // 修改参数的值
+};
+
+struct ParamRequest
+{
+    unsigned long long request_id;   // 请求序号，响应靠它配对
+    ParamOp op;                      // 要做哪种操作
+    string name;                     // 参数名，例如 "speed"
+    long value;                      // 声明/修改时的入参；读取时忽略
+};
+
+struct ParamResponse
+{
+    unsigned long long request_id;   // 原样回传
+    string name;                     // 参数名
+    long value;                      // 操作后的值
+    boolean success;                 // 失败了（比如读了没声明的参数）就是 false
+};
+
+struct ParamEvent
+{
+    string name;                     // 被改动的参数名
+    long value;                      // 改动后的新值
+};

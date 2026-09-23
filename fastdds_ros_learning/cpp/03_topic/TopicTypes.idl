@@ -1,0 +1,13 @@
+// 第 3 章的数据类型。
+//
+// 对应 ROS 2 里一个 .msg 文件。ROS 2 的 std_msgs/String 只有 data 一个字段，
+// 这里多加一个 index 序号，方便看出收到的是第几条、有没有丢。
+//
+// 注意：cpp/ 和 python/ 下各有一份内容相同的 TopicTypes.idl。
+// 内容一致才能保证两端生成出的类型在 DDS 线路上二进制兼容。
+
+struct Chatter
+{
+    unsigned long index;    // 序号
+    string text;            // 正文
+};
