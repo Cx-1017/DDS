@@ -154,7 +154,7 @@ ROS 2 的服务 API 看起来是一次函数调用，但在 DDS 这一层根本�
 | 文件 | 作用 |
 |---|---|
 | `ServiceTypes.idl` | 两个类型：`AddRequest{request_id, a, b}` 和 `AddResponse{request_id, sum}`。对应 ROS 2 `.srv` 文件里 `---` 分隔的两段 |
-| `service.hpp` | 本章唯一的头文件，三层结构：<br>① `Endpoint<Sample, PubSubType>` —— 最小话题端点，**全章唯一直接碰 DDS 的地方**，构造函数里逐行注释了每一步对应哪个实体<br>② `Service` —— 服务端，`spin()` 对应 `rclcpp::spin`<br>③ `Client` —— 客户端，`call()` 对应 `async_send_request` |
+| `service.hpp` | 本章唯一的头文件，三层结构：① `Endpoint<Sample, PubSubType>`（最小话题端点，**全章唯一直接碰 DDS 的地方**，构造函数里逐行注释了每一步对应哪个实体）；② `Service`（服务端，`spin()` 对应 `rclcpp::spin`）；③ `Client`（客户端，`call()` 对应 `async_send_request`） |
 | `server.cpp` | 服务端入口。只写业务逻辑（`handler` 里做加法），DDS 细节都在 `.hpp` 里 |
 | `client.cpp` | 客户端入口。`wait_for_service()` → `call(20, 22)` |
 | `CMakeLists.txt` | 本章构建 |

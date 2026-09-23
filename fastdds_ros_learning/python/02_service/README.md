@@ -144,7 +144,7 @@ Endpoint，`Client` 也有两个，方向相反：
 | 文件 | 作用 |
 |---|---|
 | `ServiceTypes.idl` | `AddRequest{request_id, a, b}` 和 `AddResponse{request_id, sum}`，与 cpp 侧内容相同 |
-| `service.py` | 三层结构：<br>① `Endpoint` —— 最小话题端点，**全章唯一直接碰 DDS 的地方**，构造函数逐行注释<br>② `Service` —— 服务端，`spin(handler)` 对应 `rclpy.spin`<br>③ `Client` —— 客户端，`call(a, b)` 对应 `call_async`（这里写成同步的，为了把配对过程讲清楚） |
+| `service.py` | 三层结构：① `Endpoint`（最小话题端点，**全章唯一直接碰 DDS 的地方**，构造函数逐行注释）；② `Service`（服务端，`spin(handler)` 对应 `rclpy.spin`）；③ `Client`（客户端，`call(a, b)` 对应 `call_async`，这里写成同步的是为了把配对过程讲清楚） |
 | `server.py` | 服务端入口。`handle_add(request)` 就是服务提供的能力 |
 | `client.py` | 客户端入口 |
 | `CMakeLists.txt` | 生成 `ServiceTypes.py` + SWIG 模块 |

@@ -229,7 +229,7 @@ ROS 2 的 action 有正式的状态机，本章实现的是其中的主干：
 | 文件 | 作用 |
 |---|---|
 | `ActionTypes.idl` | 四个 struct：`FibonacciGoal` / `FibonacciFeedback` / `FibonacciResult` / `FibonacciCancel` |
-| `action.py` | 四个类：<br>`Endpoint` —— 最小端点，多了个 `try_take()`（非阻塞取数，**检查取消必须用它**）<br>`GoalHandle` —— 对应 rclpy 的 `ServerGoalHandle`，`publish_feedback()` / `is_canceling()`<br>`ActionServer` —— `spin(execute)`<br>`ActionClient` —— `send_goal()` / `cancel_goal()` / `wait_for_result()` |
+| `action.py` | 四个类：`Endpoint`（最小端点，多了个 `try_take()` 非阻塞取数，**检查取消必须用它**）；`GoalHandle`（对应 rclpy 的 `ServerGoalHandle`，`publish_feedback()` / `is_canceling()`）；`ActionServer`（`spin(execute)`）；`ActionClient`（`send_goal()` / `cancel_goal()` / `wait_for_result()`） |
 | `server.py` | 服务端入口。`handle_goal(handle)` 就是 `execute_callback`：边算边报反馈，每轮查一次取消 |
 | `client.py` | 客户端入口。带 `cancel` 参数时会在 1 秒后请求取消 |
 | `CMakeLists.txt` | 生成 `ActionTypes.py` + SWIG 模块 |

@@ -155,7 +155,7 @@ DDS 的发布订阅本来就和 ROS 的话题是一回事，所以重点在于**
 | 文件 | 作用 |
 |---|---|
 | `TopicTypes.idl` | 一个 `struct Chatter { unsigned long index; string text; }`，对应 ROS 2 的一个 `.msg` |
-| `node.hpp` | 三个 ROS 风格的类：<br>`Node` —— 持有一个 `DomainParticipant`，提供 `create_publisher()` / `create_subscription()` / `spin()`<br>`Publisher` —— 包 `DataWriter`，对外只有 `publish()`<br>`Subscription` —— 包 `DataReader`，同时继承 `DataReaderListener`，在 `on_data_available()` 里把样本交给用户回调 |
+| `node.hpp` | 三个 ROS 风格的类：`Node`（持有一个 `DomainParticipant`，提供 `create_publisher()` / `create_subscription()` / `spin()`）；`Publisher`（包 `DataWriter`，对外只有 `publish()`）；`Subscription`（包 `DataReader`，同时继承 `DataReaderListener`，在 `on_data_available()` 里把样本交给用户回调） |
 | `talker.cpp` | 发布端入口（对应 ROS 2 教程的 talker） |
 | `listener.cpp` | 订阅端入口（对应 ROS 2 教程的 listener） |
 | `CMakeLists.txt` | 本章构建 |

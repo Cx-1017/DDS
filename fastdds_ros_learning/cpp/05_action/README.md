@@ -241,7 +241,7 @@ ROS 2 的 action 有正式的状态机，本章实现的是其中的主干：
 | 文件 | 作用 |
 |---|---|
 | `ActionTypes.idl` | 四个 struct：`FibonacciGoal` / `FibonacciFeedback` / `FibonacciResult` / `FibonacciCancel`。对应 ROS 2 `.action` 文件里 `---` 分隔的三段，外加一条取消通道 |
-| `action.hpp` | 四个类：<br>`Endpoint<>` —— 最小端点，多了个 `try_take()`（非阻塞取数，**检查取消必须用它**）<br>`GoalHandle` —— 对应 rclcpp_action 的 `ServerGoalHandle`，`publish_feedback()` / `is_canceling()`<br>`ActionServer` —— `spin(execute)`<br>`ActionClient` —— `send_goal()` / `cancel_goal()` / `wait_for_result()` |
+| `action.hpp` | 四个类：`Endpoint<>`（最小端点，多了个 `try_take()` 非阻塞取数，**检查取消必须用它**）；`GoalHandle`（对应 rclcpp_action 的 `ServerGoalHandle`，`publish_feedback()` / `is_canceling()`）；`ActionServer`（`spin(execute)`）；`ActionClient`（`send_goal()` / `cancel_goal()` / `wait_for_result()`） |
 | `server.cpp` | 服务端入口。`spin()` 里的 lambda 就是 rclcpp_action 的 `execute_callback`：边算边报反馈，每轮查一次取消 |
 | `client.cpp` | 客户端入口。带 `cancel` 参数时会在 1 秒后请求取消 |
 | `CMakeLists.txt` | 本章构建 |
