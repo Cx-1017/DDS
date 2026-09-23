@@ -17,6 +17,34 @@
 //   两条 Topic 之间靠 request_id 关联：响应把请求的 id 原样带回来，
 //   客户端只认 id 对得上的那条响应，这样多个请求并发也不会串味。
 //
+// ── 一次 call() 的时序 ─────────────────────────────────────────────────────
+//
+//   Client                                    Server
+//     │                                          │
+//     │ ① wait_for_service()                     │  ← 服务端要先起。
+//     │     轮询两条 Topic 的匹配数                │    不等就发，样本会
+//     │ <───────── 发现完成 ─────────────────────>│    在没匹配上时被丢掉
+//     │                                          │
+//     │ ② request.request_id(1)                  │
+//     │    request.a(20) / request.b(22)         │
+//     │                                          │
+//     │ ③ requests_.publish(request)             │
+//     │ ──────── /demo/add/request ────────────> │ ④ requests_.take()
+//     │                                          │
+//     │                                          │ ⑤ handler(request)
+//     │                                          │      sum = 42
+//     │                                          │
+//     │                                          │ ⑥ response.request_id(
+//     │                                          │       request.request_id())
+//     │                                          │    ⚠ 配对的全部就在这里
+//     │ ⑧ responses_.take()                      │
+//     │    检查 request_id == 1 ？                │ ⑦ responses_.publish(...)
+//     │ ──────── /demo/add/response ───────────< │
+//     │    对得上 → 返回；对不上 → 丢掉继续等       │
+//     │                                          │
+//
+//   第 ⑥ 步是整章的核心：服务端唯一的义务就是"把 id 原样带回"。
+//
 // ── 本文件的结构 ───────────────────────────────────────────────────────────
 //   1. Endpoint<>  —— 一个最小的话题端点（约 90 行）。
 //                     【这是全章唯一直接碰 DDS 的地方】，构造函数里逐行
@@ -26,6 +54,33 @@
 //
 //   Service / Client 只是在 Endpoint 之上加了一层 ROS 风格的 API，
 //   本身不含新的 DDS 知识。
+//
+// ── 三层结构，每层加的东西不多 ─────────────────────────────────────────────
+//
+//   ┌─ Service / Client ────────────────────────────────────┐
+//   │  只做协议逻辑：request_id 怎么发、怎么配对、何时放弃       │
+//   │  （这两个类里【没有一行】DDS 调用）                       │
+//   └──────────────────────┬────────────────────────────────┘
+//                          │ 用两个 Endpoint，
+//                          │ 一个方向收、一个方向发
+//   ┌──────────────────────▼────────────────────────────────┐
+//   │  Endpoint<Sample, PubSubType>                         │
+//   │  register_type → create_topic → create_publisher/     │
+//   │  create_subscriber → create_datawriter/datareader     │
+//   │  ★ 全章唯一直接碰 DDS 的地方 ★                          │
+//   └──────────────────────┬────────────────────────────────┘
+//                          │
+//   ┌──────────────────────▼────────────────────────────────┐
+//   │  Fast DDS 中间件（domain participant / RTPS / 发现协议） │
+//   └───────────────────────────────────────────────────────┘
+//
+//   每个 Endpoint 在参与者下面建的完整链路：
+//
+//     DomainParticipant
+//       ├── TypeSupport(AddRequest)     register_type 必须在建 Topic 之前
+//       ├── Topic /demo/add/request
+//       └── Subscriber └── DataReader   ← 收
+//     （另一个 Endpoint 同理，但方向是 Publisher └── DataWriter → 发）
 
 #include <atomic>
 #include <chrono>

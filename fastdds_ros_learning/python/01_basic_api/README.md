@@ -3,6 +3,156 @@
 这一章**刻意不用任何自定义封装**，把 Fast DDS 实体的创建流程完整摊开。
 本目录与 `cpp/01_basic_api/` 逐行对应，可以对照着读。
 
+## 图解
+
+### ① 实体包含关系 —— DDS 的对象是一棵树
+
+```
+    DomainParticipantFactory            进程级单例，一切的入口
+      │                                 get_instance()
+      │
+      └── DomainParticipant             参与者：本进程在某个 DDS 域里的身份
+            │                           create_participant(域号, QoS)
+            │
+            ├── TypeSupport             类型：怎么把 HelloWorld 变成字节
+            │     register_type()       ⚠ 必须在建 Topic 之前
+            │
+            ├── Topic                   话题：一个【名字】+ 一个【类型】
+            │     create_topic()        ⚠ 名字和类型两端必须完全一致
+            │
+            ├── Publisher               发布侧的容器
+            │     └── DataWriter        真正执行发送的实体
+            │           write()
+            │
+            └── Subscriber              订阅侧的容器
+                  └── DataReader        真正接收数据的实体
+                        take_next_sample()
+```
+
+一句话记忆：**工厂造参与者，参与者造 Topic 和收发容器，容器造读写器。**
+
+Python 里还有一个额外约束：**所有实体都要保持引用**（本章把它们绑在局部变量上）。
+被垃圾回收的 SWIG 对象可能已经注册进 DDS，回收后会出现很难查的
+「对象还在但收不到数据」。
+
+### ② 两个进程怎么互相找到 —— 发现（Discovery）
+
+DDS 是**去中心化**的：没有服务器帮你牵线，每个参与者在后台广播自己、
+收听别人。整个过程不需要你写代码。
+
+```
+   进程 A（publisher.py）                   进程 B（subscriber_listener.py）
+   ┌─ DomainParticipant  域 0 ─┐            ┌─ DomainParticipant  域 0 ─┐
+   └────────────┬─────────────┘            └─────────────┬────────────┘
+                │                                        │
+                │   ① 后台发现协议自动交换信息（你没写这段代码）
+                │ ─────────────────────────────────────> │
+                │   "我有 HelloWorldTopic / HelloWorld 的 DataWriter"
+                │ <───────────────────────────────────── │
+                │   "我有 HelloWorldTopic / HelloWorld 的 DataReader"
+                │                                        │
+                │   ② 名字对得上吗？类型对得上吗？QoS 兼容吗？
+                │      三个都满足 → 匹配成功
+                ▼                                        ▼
+     PublicationMatchedStatus                  SubscriptionMatchedStatus
+        .current_count = 1                        .current_count = 1
+                │                                        │
+                │   ③ 匹配之后，数据才真正开始流动
+                │ <═══════════ write() ═════════════════ │
+```
+
+**为什么必须等匹配？** reader 还没被发现就 `write()`，那份样本找不到收件人，
+**直接被丢掉**，不报错也不重传。publisher.py 里的 `while True` 轮询
+`current_count` 就是在等第 ② 步完成。
+
+换个域号（`create_participant(1, ...)`）等于换个频道，
+两个域的参与者**完全看不见**对方：
+
+```
+   域 0  ┌── A ──┐  ┌── B ──┐        域 1  ┌── C ──┐
+         └───────┘  └───────┘              └───────┘
+         A 和 B 能互相发现                    C 谁也看不见
+         C 和 A、B 之间完全隔离
+```
+
+### ③ 数据从 write() 到 take_next_sample() 的完整路径
+
+```
+   publisher.py                       subscriber_listener.py
+   ────────────                       ──────────────────────
+   sample.index(3)
+   writer.write(sample)
+        │
+        │  ① 序列化：由 HelloWorldPubSubType 完成
+        ▼
+   DataWriter 历史缓存   ② history().depth 决定存几条
+        │
+        │  ③ RTPS 协议分片、编号、必要时重传
+        ▼
+   ═══════════════════ 网络 / 共享内存 ═══════════════════
+        │
+        ▼
+   DataReader 缓存       ④ on_data_available() 被回调
+        │
+        ▼
+   reader.take_next_sample(sample, info)
+        │
+        │  ⑤ 反序列化回对象，并把这条从缓存里【删除】
+        ▼
+   sample.index() == 3
+```
+
+### ④ 两种取数方式：谁在哪个线程上干活
+
+这是 listener 和轮询的**唯一本质区别**。
+
+```
+ ┌─ listener 方式（subscriber_listener.py）─────────────────────────────┐
+ │                                                                       │
+ │  Fast DDS 内部线程          on_data_available(reader)  ← 自动被调用   │
+ │  ─────────────────  ────>   while reader.take_next_sample(...) == OK  │
+ │                                   处理样本                            │
+ │                                                                       │
+ │  主线程                                                               │
+ │  ────────────  while True: time.sleep(0.2)   ← 干等着，什么也不做    │
+ │                                                                       │
+ │  特点：回调是【并发】的，里面的共享数据要自己加锁                     │
+ └───────────────────────────────────────────────────────────────────────┘
+
+ ┌─ 轮询方式（subscriber_polling.py）───────────────────────────────────┐
+ │                                                                       │
+ │  Fast DDS 内部线程                                                    │
+ │  ─────────────────   （只负责把数据放进 reader 缓存，不回调任何人）   │
+ │                                                                       │
+ │  主线程                                                               │
+ │  ─────────────────   while True:                                      │
+ │                          reader.wait_for_unread_message(1s)  ← 阻塞等 │
+ │                          while reader.take_next_sample(...) == OK     │
+ │                              处理样本                                 │
+ │                                                                       │
+ │  特点：控制流全在你手里，好读好调试；代价是循环和超时要自己管         │
+ └───────────────────────────────────────────────────────────────────────┘
+```
+
+### ⑤ 一对多 / 多对多是怎么自然成立的
+
+匹配是按 (Topic, 类型, QoS) 做的，**谁都可能匹配上谁**，不需要额外配置：
+
+```
+   一对多                                   多对多
+   ──────                                   ──────
+                 ┌── subscriber_listener                 ┌── 订阅端 1
+   发布端 ───────┤                          发布端 1 ───┤
+                 └── subscriber_polling                  │
+                                                       ├── 订阅端 2
+                                            发布端 2 ───┤
+                                                       │
+                                                       └── 订阅端 3
+```
+
+上面这些连线**全部由发现协议自动完成**。本项目验证过：一个发布端 +
+两个订阅端同时跑，发布端会打印「已匹配 2 个订阅端」，两边各收到全部 10 条。
+
 ## 文件说明
 
 | 文件 | 作用 |

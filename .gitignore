@@ -1,7 +1,13 @@
 # ── VSCode 的 IntelliSense 浏览数据库 ──────────────────────────────────────
 # 机器相关、可自动重建，而且单个文件就有近 900MB。
 # 提交进 git 历史后几乎无法移除，务必排除。
-.vscode/browse.vc.db*
+#
+# ⚠ 这里【不能】写成 `.vscode/browse.vc.db*`。gitignore 的规则是：
+#   模式中间或开头含 `/` 时，它锚定在该 .gitignore 文件所在目录，
+#   所以那种写法只匹配「仓库根/.vscode/」这一处，子目录里的会漏掉。
+#   不带分隔符的 `browse.vc.db*` 才能在任意深度生效。
+#   本项目 .vscode/ 在根目录和 fastdds_ros_learning/ 下各有一份，都要覆盖。
+browse.vc.db*
 
 # ── 构建产物 ───────────────────────────────────────────────────────────────
 # fastdds_ros_learning 下的生成代码、可执行文件、Python 模块

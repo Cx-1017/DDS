@@ -3,6 +3,146 @@
 本目录与 `cpp/03_topic/` 逐行对应，差异说明见那边的 README，
 这里只讲 Python 侧的文件和写法。
 
+## 图解
+
+### ① 这一章其实没造新东西，只是换了层皮
+
+话题功能在 DDS 里是**原生的**，所以映射是**一对一的**，
+不像第 2/4/5 章那样要"用几条 Topic 拼出一个协议"：
+
+```
+   rclpy 写法                                    对应的 DDS 实体
+   ──────────                                    ──────────────────────
+
+   rclpy.create_node("talker")                →  DomainParticipant（域 0）
+
+   node.create_publisher(Chatter, topic, 10)  →  register_type
+                                                 + create_topic
+                                                 + create_publisher
+                                                 + create_datawriter
+
+   node.create_subscription(Chatter,topic,cb,10) → register_type
+                                                 + create_topic
+                                                 + create_subscriber
+                                                 + create_datareader
+
+   pub.publish(msg)                           →  DataWriter.write()
+   rclpy.spin(node)                           →  （没有对应物，见下一张图）
+
+   ↑ Python 一行，DDS 四步。封装的意义               ↑
+     就是把那四步收进一个构造函数里            这个「没有对应物」是关键差异
+```
+
+### ② 什么条件下两个端点才会匹配
+
+**三个条件全部满足**才会建立连接：
+
+```
+                   发布端（talker）                    订阅端（listener）
+                   ────────────────                    ──────────────────
+
+   ① Topic 名字       "/demo/chatter"        ==?        "/demo/chatter"        ✓
+   ② 类型名           "Chatter"              ==?        "Chatter"              ✓
+   ③ QoS 兼容         RELIABLE              兼容?       RELIABLE               ✓
+                     history.depth = 10                history.depth = 10
+                            │                                  │
+                            └──────────────┬───────────────────┘
+                                           ▼
+                                    匹配成功，建立连接
+
+   ─────────────────────── 任意一条不满足 ───────────────────────
+
+   ① 名字不同             "/demo/chatter"      ≠         "/demo/other"          ✗
+      → 静默不匹配。不报错、不警告，两边各自跑到超时 —— 这是最常见的坑
+
+   ② 类型名不同           "Chatter"            ≠         "ChatterV2"            ✗
+   ③ QoS 不兼容           BEST_EFFORT         与?        RELIABLE              ✗
+```
+
+**为什么强调"静默"**：DDS 是去中心化的，没有中心节点能告诉你
+"对面在，但你俩条件对不上"。两边看到的都只是 `current_count == 0`。
+排查匹配问题要看 `fastdds discovery -i 0 -l` 的输出，而不是等报错。
+
+### ③ 线程模型：这是和 ROS 最本质的差异
+
+同样叫 `spin()`，两边的含义**完全不同**：
+
+```
+ ┌─ ROS 2（rclpy）───────────────────────────────────────────────────────┐
+ │                                                                       │
+ │   中间件线程      收到数据 → 放进【回调队列】→ 通知 executor            │
+ │       │                            （这里就结束了，回调还没跑）          │
+ │       ▼                                                               │
+ │   主线程          rclpy.spin(node)                                    │
+ │                   └─ 从回调队列里取任务 → 执行你的 callback            │
+ │                                                                       │
+ │   ★ callback 是被 spin() 驱动的。不 spin，回调永远不跑。               │
+ └───────────────────────────────────────────────────────────────────────┘
+
+ ┌─ 本章（Fast DDS）─────────────────────────────────────────────────────┐
+ │                                                                       │
+ │   中间件线程      收到数据 → 直接调用 on_data_available()              │
+ │                   └─ 在里面执行你的 callback                          │
+ │                                                                       │
+ │   ★ callback 跑在【中间件线程】上，和主线程无关。                      │
+ │                                                                       │
+ │   主线程          node.spin()                                         │
+ │                   └─ while self._running: time.sleep(0.1)             │
+ │                       ↑ 纯粹是把主线程卡住，防止程序退出、节点析构       │
+ │                                                                       │
+ │   ★ 不调 spin()，回调照样跑。spin() 在这边只是个"别退出"的等待。        │
+ └───────────────────────────────────────────────────────────────────────┘
+```
+
+由此推出两条实践约束：
+1. **回调里不能长时间阻塞** —— 会拖住中间件的收发线程；
+2. **回调里的共享数据要自己加锁** —— 它是并发调用的，ROS 那边
+   由 executor 串行化，这里没有。
+
+### ④ Python 特有的一个坑：每个样本都要新建对象
+
+`on_data_available` 里是**每轮新建**一个 `Chatter()` 再取数，
+而不是像第 1 章那样复用一个对象：
+
+```
+   复用同一个对象（第 1 章的写法）             每轮新建（本章的写法）
+   ─────────────────────────────             ──────────────────────
+   sample = Chatter()                        while True:
+   while take_next_sample(sample, info):         sample = Chatter()
+       callback(sample)  ← 传引用                 if take_next_sample(...) != OK: break
+             │                                    callback(sample)  ← 传引用
+             ▼                                          │
+   回调如果存了引用，                          回调存了引用也没问题，
+   循环几轮后所有引用                           每个引用指向各自的对象
+   都指向【最后一条】数据 ⚠
+
+   ↑ 第 1 章在循环里直接 print，不复用没问题；
+     本章要把样本交给用户回调，回调可能把引用存起来，所以必须新建。
+```
+
+### ⑤ Node 类在 DDS 里持有什么
+
+```
+   Node("talker")
+     │
+     ├── DomainParticipant（域 0）    ← 构造函数里建，destroy() 里删
+     │     └── register_type(ChatterPubSubType)  ← 只注册一次
+     │
+     ├── create_publisher("/demo/chatter", history_depth=10)
+     │     ├── create_topic(名字, 类型名)
+     │     ├── create_publisher()          ← 懒创建，整个节点共用一个
+     │     └── create_datawriter(topic, writer_qos)
+     │
+     ├── create_subscription("/demo/chatter", callback, history_depth=10)
+     │     ├── create_topic(名字, 类型名)
+     │     ├── create_subscriber()         ← 懒创建，共用一个
+     │     └── create_datareader(topic, reader_qos, sub)   ← sub 自己当 listener
+     │
+     └── 两个 list 持有所有创建过的端点（self._publishers / self._subscriptions）
+           └─ ⚠ Subscription 尤其重要：DataReader 持有它的引用，
+              被垃圾回收后回调会【静默失效】—— 不报错，只是收不到数据
+```
+
 ## 文件说明
 
 | 文件 | 作用 |

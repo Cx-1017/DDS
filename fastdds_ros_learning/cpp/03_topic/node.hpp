@@ -14,10 +14,56 @@
 //     Publisher     包 DataWriter，对外只有 publish()
 //     Subscription  包 DataReader，回调在 on_data_available() 里触发
 //
+//   这个映射是【一对一】的 —— 话题功能在 DDS 里本来就是原生的，
+//   不需要像第 2/4/5 章那样"用几条 Topic 拼出一个协议"：
+//
+//     create_publisher<Chatter>(topic, 10)   →  register_type
+//                                                + create_topic
+//                                                + create_publisher
+//                                                + create_datawriter
+//     create_subscription<Chatter>(topic,10,cb) → register_type
+//                                                + create_topic
+//                                                + create_subscriber
+//                                                + create_datareader
+//     pub->publish(msg)                      →  DataWriter::write()
+//     rclcpp::spin(node)                     →  （没有对应物，见下）
+//
+//   ROS 一行，DDS 四步 —— 封装的意义就是把那四步收进一个构造函数里。
+//
+// ── 匹配规则：三个条件全满足才连得上 ───────────────────────────────────────
+//
+//             发布端                        订阅端
+//     ① Topic 名   "/demo/chatter"   ==?   "/demo/chatter"     ✓
+//     ② 类型名     "Chatter"         ==?   "Chatter"           ✓
+//     ③ QoS 兼容   RELIABLE         兼容?  RELIABLE            ✓
+//                        │                     │
+//                        └──────────┬──────────┘
+//                                   ▼
+//                            匹配成功，建立连接
+//
+//   任意一条不满足 → 静默不匹配。不报错、不警告，两边各自跑到超时。
+//   排查匹配问题要看 `fastdds discovery -i 0 -l`，别等报错。
+//
 // ── 三个必须知道的差异 ─────────────────────────────────────────────────────
-//   1. 【spin() 的含义不同】ROS 2 的 spin() 是主线程去跑回调队列；DDS 的回调
-//      跑在中间件自己的线程上，所以这里的 spin() 只是把主线程阻塞住，防止
-//      main 提前退出。回调本身不需要 spin() 驱动。
+//   1. 【spin() 的含义不同】—— 这是和 ROS 最本质的差异：
+//
+//      ROS 2（rclcpp）                      本章（Fast DDS）
+//      ───────────────                      ────────────────
+//      中间件线程 → 放进【回调队列】          中间件线程 → 直接调用
+//                                              on_data_available()
+//                                                 └─ 执行你的 callback
+//      主线程 spin() → 从队列取 → 跑 callback
+//                                            主线程 spin() → 只是 while+sleep
+//                                               ↑ 把主线程卡住，防止 main 返回
+//                                                 、节点被析构
+//
+//      ★ ROS 那边不 spin 回调永远不跑；
+//        DDS 这边不 spin 回调照样跑，spin 只是个别退出的等待。
+//
+//      由此推出两条实践约束：
+//        - 回调里不能长时间阻塞，否则会拖住中间件的收发线程；
+//        - 回调里的共享数据要自己加锁（ROS 由 executor 串行化，这边没有）。
+//
 //   2. ROS 2 有 namespace / remapping / 命名规则那一套；这里 Topic 名就是
 //      DDS 上真正的名字，不经过任何改名。
 //   3. QoS 直接暴露 DDS 的。ROS 2 的 QoS 是它自己的一套语义，最终由 RMW

@@ -7,12 +7,39 @@
 并且 create_datareader() 多传一个 DataReaderListener。
 
 【关键区别：threading】
-listener 方式下，取数据的代码不在主线程里，而在 Fast DDS 自己的内部线程上
-被回调执行。也就是说 on_data_available() 是并发调用的，里面碰到的共享数据
-要自己加锁。主线程此时只负责等待。
 
-对照程序：subscriber_polling.py 用主线程主动轮询，控制流全在 main 里，
-对初学者更直观。两种方式没有优劣，看场景选。
+   Fast DDS 内部线程                          主线程
+   ──────────────────────                     ──────────────────
+         │                                          │
+   收到一个样本                                     │
+         │                                          │
+         ▼                                          │
+   on_data_available(reader)  ← 自动回调            │
+         │      ▲                                   │
+         │      └─ 这个函数【不是你调的】，是中间件调的
+         │                                          │
+         ├─ while reader.take_next_sample(...) == OK
+         │      排空缓存，处理每一条                 │
+         │                                          │
+         ▼                                          ▼
+    （回调返回，线程继续干别的）         while True: time.sleep(0.2)
+                                          ↑ 主线程只是等在这里，
+                                            防止程序退出把对象析构掉
+
+三个必须记住的结论：
+  1. 取数据的代码不在主线程里，而在中间件线程上被并发调用 ——
+     回调里碰到的共享数据要自己加锁。
+  2. 回调里不能长时间阻塞，否则会拖住 DDS 的收发线程。
+  3. 【Python 特有】listener 对象必须保持引用。reader 只持有它，
+     一旦被垃圾回收，回调会**静默失效** —— 不报错，只是再也收不到数据。
+     所以下面把它绑在一个活到程序结束的局部变量上。
+
+【和轮询方式的唯一区别】
+  listener：create_datareader(topic, qos, listener)   ← 传 listener 对象
+  轮询    ：create_datareader(topic, qos, None)       ← 传 None，
+            然后自己在主线程里循环 wait_for_unread_message() + take
+
+对照程序：subscriber_polling.py。两种方式没有优劣，看场景选。
 
 运行前先确认 CMake 已经构建过，且 fastdds 绑定在 PYTHONPATH 上
 （见仓库根目录 README.md）。

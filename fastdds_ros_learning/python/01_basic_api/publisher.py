@@ -4,7 +4,9 @@
 这个文件不用任何自定义封装，完整走一遍 Fast DDS 实体的创建流程。
 
 Python 绑定是 C++ API 的近乎 1:1 映射，所以下面每一步都能在
-cpp/01_basic_api/basic_publisher.cpp 里找到对应写法：
+cpp/01_basic_api/basic_publisher.cpp 里找到对应写法。
+
+── 实体包含关系 ────────────────────────────────────────────────────────────
 
     DomainParticipantFactory        进程内单例，一切的入口
       └── DomainParticipant         参与者：本进程在某个 DDS 域里的身份
@@ -12,6 +14,47 @@ cpp/01_basic_api/basic_publisher.cpp 里找到对应写法：
             └── Topic               话题：把一个【名字】和一个【类型】绑在一起
                   └── Publisher          发布侧容器（订阅侧对应 Subscriber）
                         └── DataWriter   真正执行发送的实体
+
+── main() 的八步，和下面注释里的编号一一对应 ────────────────────────────────
+
+    ① factory     = DomainParticipantFactory.get_instance()
+         │
+    ② participant = factory.create_participant(0, participant_qos)    域号=0
+         │
+    ③ participant.register_type(TypeSupport(topic_type))  ⚠ 必须早于第 ④ 步
+         │
+    ④ topic       = participant.create_topic(名字, 类型名, topic_qos)
+         │
+    ⑤ publisher   = participant.create_publisher(...)
+         │  writer  = publisher.create_datawriter(topic, writer_qos)
+         │
+    ⑥ 等 matched.current_count > 0        ⚠ 不等就可能丢样本
+         │      ▲ 这一步等的是【后台发现协议】把两端撮合好
+         │      │
+    ⑦ writer.write(sample) × 10
+         │
+    ⑧ participant.delete_contained_entities()
+       factory.delete_participant(participant)
+
+── write() 之后数据经历了什么 ──────────────────────────────────────────────
+
+    writer.write(sample)
+         │ ① 按 IDL 定义序列化成字节流（HelloWorldPubSubType 干的）
+         ▼
+    DataWriter 历史缓存   ② history().depth 决定存几条，可靠传输留到对端确认
+         │
+         │ ③ RTPS 协议分片、编号、必要时重传
+         ▼
+    ═══════════════════ 网络 / 共享内存 ═══════════════════
+         │
+         ▼
+    对端 DataReader 缓存   ④ 通知 reader：有新数据了
+         │
+         ▼
+    对端 take_next_sample()
+
+所以 write() 返回后**不代表对端收到了**，这是个异步过程。真要确认得调
+writer.wait_for_acknowledgments()。
 
 Python 绑定和 C++ 用法上的三点差异，注意别踩：
   1. Python 里每个实体都由它的【父实体】创建，而不是各自 new。
